@@ -1,9 +1,7 @@
 use spider_engine::core::schedule::AsyncExecutor;
 
-
 #[derive(Debug)]
 pub struct TokioAsyncProvider;
-
 
 impl AsyncExecutor for TokioAsyncProvider {
     fn get_name() -> &'static str {

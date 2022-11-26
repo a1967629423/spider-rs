@@ -38,11 +38,7 @@ impl ContentFetcher for BaiduHotSearchFetcher {
         let res = visdom::Vis::load(result).map_err(BoxError::from_send_sync_box)?;
         let elements = res.find(".item-wrap_2oCLZ .c-single-text-ellipsis");
 
-        let contents = elements.map(|_idx,el| {
-            el.text()
-        });
-
-        
+        let contents = elements.map(|_idx, el| el.text());
 
         Ok(BoxContentType::new(BaiduHotSearchContent { contents }))
     }

@@ -1,6 +1,6 @@
 use super::content_fetcher::{BoxContentType, BoxError};
 
-pub trait ContentType:std::any::Any  {
+pub trait ContentType: std::any::Any {
     fn custom_debug(&self) -> Option<Box<dyn std::fmt::Debug>> {
         None
     }
@@ -8,12 +8,12 @@ pub trait ContentType:std::any::Any  {
 
 #[async_trait::async_trait]
 pub trait ContentResolver {
-    type ContentType:ContentType;
-    type Error:std::error::Error;
+    type ContentType: ContentType;
+    type Error: std::error::Error;
 
-    async fn resolve_content(&mut self,content:Self::ContentType) -> Result<(),Self::Error>;
+    async fn resolve_content(&mut self, content: Self::ContentType) -> Result<(), Self::Error>;
 }
-#[derive(Debug,Default)]
+#[derive(Debug, Default)]
 pub struct LogContentResolver;
 
 impl LogContentResolver {
@@ -27,14 +27,13 @@ impl ContentResolver for LogContentResolver {
     type ContentType = BoxContentType;
     type Error = BoxError;
 
-    async fn resolve_content(&mut self,content:Self::ContentType) -> Result<(),Self::Error> {
+    async fn resolve_content(&mut self, content: Self::ContentType) -> Result<(), Self::Error> {
         let inner = content.into_inner();
         if let Some(d) = inner.custom_debug() {
-            log::info!("resolve: {:?}",d.as_ref())
+            log::info!("resolve: {:?}", d.as_ref())
         } else {
             log::info!("resolve: unknown");
         }
         Ok(())
     }
 }
-

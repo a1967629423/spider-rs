@@ -9,49 +9,38 @@ pub trait TaskRunTimer {
     fn can_run(&self) -> bool;
 }
 pub mod const_task_run_timer_type {
-    pub const SECS:u8 = 0;
-    pub const MILLIS:u8 = 1;
-    pub const MICROS:u8 = 2;
+    pub const SECS: u8 = 0;
+    pub const MILLIS: u8 = 1;
+    pub const MICROS: u8 = 2;
 }
-#[derive(Debug,Default)]
-pub struct ConstTaskRunTimer<const DURATION:u64,const TIME_TYPE:u8>;
-impl<const DURATION:u64,const TIME_TYPE:u8>  ConstTaskRunTimer<DURATION,TIME_TYPE> {
+#[derive(Debug, Default)]
+pub struct ConstTaskRunTimer<const DURATION: u64, const TIME_TYPE: u8>;
+impl<const DURATION: u64, const TIME_TYPE: u8> ConstTaskRunTimer<DURATION, TIME_TYPE> {
     pub fn new() -> Self {
         Self
     }
 }
-impl<const DURATION:u64,const TIME_TYPE:u8> TaskRunTimer for ConstTaskRunTimer<DURATION,TIME_TYPE> {
+impl<const DURATION: u64, const TIME_TYPE: u8> TaskRunTimer
+    for ConstTaskRunTimer<DURATION, TIME_TYPE>
+{
     fn can_run(&self) -> bool {
         true
     }
     fn next_check(&mut self) -> Option<std::time::Duration> {
-
         let duration = match TIME_TYPE {
-            0 => {
-                std::time::Duration::from_secs(DURATION)
-            },
-            1 => {
-                std::time::Duration::from_millis(DURATION)
-            },
-            2 => {
-                std::time::Duration::from_micros(DURATION)
-            }
-            _ => {
-                std::time::Duration::from_secs(DURATION)
-            }
+            0 => std::time::Duration::from_secs(DURATION),
+            1 => std::time::Duration::from_millis(DURATION),
+            2 => std::time::Duration::from_micros(DURATION),
+            _ => std::time::Duration::from_secs(DURATION),
         };
         Some(duration)
     }
 }
 
-
 pub struct BoxTask {
     fetcher: Box<
-        dyn ContentFetcher<
-            ContentType = BoxContentType,
-            ID = BoxContextID,
-            Error = BoxError,
-        > + Send,
+        dyn ContentFetcher<ContentType = BoxContentType, ID = BoxContextID, Error = BoxError>
+            + Send,
     >,
     resolver: Box<dyn ContentResolver<Error = BoxError, ContentType = BoxContentType> + Send>,
     timer: Box<dyn TaskRunTimer + Send>,
@@ -61,11 +50,9 @@ pub struct BoxTask {
 impl BoxTask {
     pub fn new<F, ID, R, T>(fetcher: F, id: ID, resolver: R, timer: T) -> Self
     where
-        F: ContentFetcher<
-                Error = BoxError,
-                ContentType = BoxContentType,
-                ID = BoxContextID,
-            > + Send +  'static,
+        F: ContentFetcher<Error = BoxError, ContentType = BoxContentType, ID = BoxContextID>
+            + Send
+            + 'static,
         R: ContentResolver<Error = BoxError, ContentType = F::ContentType> + Send + 'static,
         T: TaskRunTimer + Send + 'static,
         ID: ContextID + Send + Sync + 'static,
@@ -89,9 +76,9 @@ impl BoxTask {
                 if let Err(e) = resolve_content {
                     return Some(Err(e));
                 }
-                return Some(Ok(()));
+                Some(Ok(()))
             }
-            Err(e) => return Some(Err(e)),
+            Err(e) => Some(Err(e)),
         }
     }
 }

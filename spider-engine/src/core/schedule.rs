@@ -16,7 +16,7 @@ pub trait AsyncExecutor {
     fn spawn(fu: futures::future::BoxFuture<'static, ()>);
     fn sleep(duration: std::time::Duration) -> futures::future::BoxFuture<'static, ()>;
 }
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 struct TimerScheduleData {
     task_id: usize,
     next_time: std::time::Duration,
@@ -30,6 +30,14 @@ pub struct TaskSchedule<E> {
     timer_schedule_receiver: Mutex<UnboundedReceiver<TimerScheduleData>>,
     end_schedule_sender: Mutex<Sender<()>>,
     end_schedule_receiver: Mutex<Receiver<()>>,
+}
+impl<E> Default for TaskSchedule<E>
+where
+    E: AsyncExecutor,
+{
+    fn default() -> Self {
+        Self::new()
+    }
 }
 impl<E> TaskSchedule<E>
 where
@@ -55,12 +63,10 @@ where
         let next_time = {
             if task.can_run() {
                 std::time::Duration::from_secs(0)
+            } else if let Some(t) = task.next_check() {
+                t
             } else {
-                if let Some(t) = task.next_check() {
-                    t
-                } else {
-                    return id;
-                }
+                return id;
             }
         };
         self.task_fetchers.lock().await.insert(id, task);
@@ -106,12 +112,11 @@ where
         E::spawn(Box::pin(async move {
             loop {
                 let duration = data.next_time;
-                log::info!("task {} sleep {:?}",data.task_id,duration);
-                if !duration.is_zero()   {
-
+                log::info!("task {} sleep {:?}", data.task_id, duration);
+                if !duration.is_zero() {
                     E::sleep(duration).await;
                 }
-                log::info!("task {} wake up",data.task_id);
+                log::info!("task {} wake up", data.task_id);
                 if let Some(task_fetchers) = task_fetchers.upgrade() {
                     let mut guard = task_fetchers.lock().await;
                     if let Some(task) = guard.get_mut(&data.task_id) {
@@ -120,9 +125,13 @@ where
                         }
                         let task_run_start = std::time::Instant::now();
                         if let Some(Err(e)) = task.run_once().await {
-                            log::error!("task {} run error {:?}",data.task_id,e);
+                            log::error!("task {} run error {:?}", data.task_id, e);
                         }
-                        log::info!("task {} run expend {:?}",data.task_id,std::time::Instant::now() - task_run_start);
+                        log::info!(
+                            "task {} run expend {:?}",
+                            data.task_id,
+                            std::time::Instant::now() - task_run_start
+                        );
                         if let Some(t) = task.next_check() {
                             data.next_time = t;
                         } else {
