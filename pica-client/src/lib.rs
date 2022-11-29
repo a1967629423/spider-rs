@@ -1,7 +1,8 @@
-pub mod core;
+pub mod request;
+pub mod client;
+pub mod session;
 pub mod error;
-pub mod utils;
-pub use crate::core::content_fetcher::BoxError;
+pub mod picajson;
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }

@@ -1,3 +1,7 @@
+use crate::BoxError;
+
+use super::content_fetcher::{BoxContentType, BoxContextID, ContentFetcher, ContextID};
+use super::content_resolver::ContentResolver;
 use super::task::{BoxTask, TaskRunTimer};
 use futures::channel::mpsc::{
     channel, unbounded, Receiver, Sender, UnboundedReceiver, UnboundedSender,
@@ -25,7 +29,7 @@ struct TimerScheduleData {
 pub struct TaskSchedule<E> {
     __mark: PhantomData<E>,
     current_id: AtomicUsize,
-    task_fetchers: Arc<Mutex<HashMap<usize, BoxTask>>>,
+    task_fetchers: Arc<Mutex<HashMap<usize, Arc<Mutex<BoxTask>>>>>,
     timer_schedule_sender: Mutex<UnboundedSender<TimerScheduleData>>,
     timer_schedule_receiver: Mutex<UnboundedReceiver<TimerScheduleData>>,
     end_schedule_sender: Mutex<Sender<()>>,
@@ -56,20 +60,44 @@ where
             end_schedule_receiver: Mutex::new(end_receiver),
         }
     }
-    pub async fn add_task(&self, mut task: BoxTask) -> usize {
-        let id = self
-            .current_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    fn gen_id(&self) -> usize {
+        self.current_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    }
+    pub async fn add_box_task<F, ID, R, T>(
+        &self,
+        fetcher: F,
+        content_id: ID,
+        resolver: R,
+        timer: T,
+    ) -> usize
+    where
+        F: ContentFetcher<Error = BoxError, ContentType = BoxContentType, ID = BoxContextID>
+            + Send
+            + 'static,
+        R: ContentResolver<Error = BoxError, ContentType = F::ContentType> + Send + 'static,
+        T: TaskRunTimer + Send + 'static,
+        ID: ContextID + Send + Sync + 'static,
+    {
+        let id = self.gen_id();
+        let task = BoxTask::new(fetcher, content_id, resolver, timer, id);
+        self.add_task(id, task).await;
+        id
+    }
+    async fn add_task(&self, id: usize, mut task: BoxTask) {
         let next_time = {
             if task.can_run() {
                 std::time::Duration::from_secs(0)
             } else if let Some(t) = task.next_check() {
                 t
             } else {
-                return id;
+                return;
             }
         };
-        self.task_fetchers.lock().await.insert(id, task);
+        self.task_fetchers
+            .lock()
+            .await
+            .insert(id, Arc::new(Mutex::new(task)));
         self.timer_schedule_sender
             .lock()
             .await
@@ -79,7 +107,6 @@ where
             })
             .await
             .ok();
-        id
     }
 
     pub async fn schedule(&self) {
@@ -118,27 +145,44 @@ where
                 }
                 log::info!("task {} wake up", data.task_id);
                 if let Some(task_fetchers) = task_fetchers.upgrade() {
-                    let mut guard = task_fetchers.lock().await;
-                    if let Some(task) = guard.get_mut(&data.task_id) {
-                        if !task.can_run() {
+                    let task = {
+                        let mut guard = task_fetchers.lock().await;
+                        if let Some(task) = guard.get_mut(&data.task_id) {
+                            Arc::clone(task)
+                        } else {
                             break;
                         }
+                    };
+                    let (can_run, id_changed) = {
+                        let g = task.lock().await;
+                        (g.can_run(), g.id_changed())
+                    };
+                    if can_run && id_changed {
                         let task_run_start = std::time::Instant::now();
-                        if let Some(Err(e)) = task.run_once().await {
-                            log::error!("task {} run error {:?}", data.task_id, e);
+                        if let Some(value) = task.lock().await.run_once().await {
+                            if let Err(e) = value {
+                                log::error!("task {} run error {:?}", data.task_id, e);
+                            }
+                        } else {
+                            log::info!("task {} is end", data.task_id);
+                            break;
                         }
                         log::info!(
                             "task {} run expend {:?}",
                             data.task_id,
                             std::time::Instant::now() - task_run_start
                         );
-                        if let Some(t) = task.next_check() {
+                    } else {
+                        log::info!("task {} passed run", data.task_id);
+                    }
+                    {
+                        let mut g = task.lock().await;
+
+                        if let Some(t) = g.next_check() {
                             data.next_time = t;
                         } else {
                             break;
                         }
-                    } else {
-                        break;
                     }
                 }
             }

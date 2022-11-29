@@ -16,3 +16,4 @@ futures = "0.3.25"
 env_logger = "0.10.0"
 log = "0.4.17"
 visdom = "0.5.8"
+pica-client = {path="../pica-client"}

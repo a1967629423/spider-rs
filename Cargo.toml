@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "spider-client",
-    "spider-engine"
+    "spider-engine",
+    "pica-client"
 ]

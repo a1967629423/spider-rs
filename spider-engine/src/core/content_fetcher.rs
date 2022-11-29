@@ -1,8 +1,18 @@
 use super::content_resolver::ContentType;
-
-pub trait ContextID {
-    fn next_id(&mut self);
+#[async_trait::async_trait]
+pub trait ContextID: std::any::Any {
+    fn changed(&self) -> bool {
+        true
+    }
+    async fn next_id(&mut self);
+    /// 判断是否存在下一个ID，如果不存在任务结束
     fn has_next(&self) -> bool;
+    fn as_any(&self) -> &dyn std::any::Any
+    where
+        Self: Sized,
+    {
+        self
+    }
 }
 pub struct BoxContextID(Box<dyn ContextID + Send + Sync>);
 #[derive(Debug, Default)]
@@ -13,12 +23,12 @@ impl EmptyContextID {
         Self
     }
 }
-
+#[async_trait::async_trait]
 impl ContextID for EmptyContextID {
     fn has_next(&self) -> bool {
         true
     }
-    fn next_id(&mut self) {}
+    async fn next_id(&mut self) {}
 }
 
 impl BoxContextID {
@@ -34,16 +44,29 @@ impl ContextID for BoxContextID {
     fn has_next(&self) -> bool {
         self.0.has_next()
     }
-    fn next_id(&mut self) {
+    fn next_id<'life0, 'async_trait>(
+        &'life0 mut self,
+    ) -> ::core::pin::Pin<
+        Box<dyn ::core::future::Future<Output = ()> + ::core::marker::Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
         self.0.next_id()
     }
 }
-#[derive(Debug)]
+
 pub struct BoxError(Box<dyn std::error::Error + Send>);
 
 impl std::fmt::Display for BoxError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("BoxError").field(&self.0).finish()
+        self.0.fmt(f)
+    }
+}
+impl std::fmt::Debug for BoxError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 impl std::error::Error for BoxError {}
@@ -82,6 +105,9 @@ pub trait ContentFetcher {
     type ContentType;
     type ID: ContextID;
     type Error: std::error::Error;
+    fn name(&self) -> String {
+        "anonymous fetcher".into()
+    }
 
     async fn fetch_content(&mut self, id: &Self::ID) -> Result<Self::ContentType, Self::Error>;
 }

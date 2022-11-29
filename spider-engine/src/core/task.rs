@@ -45,10 +45,11 @@ pub struct BoxTask {
     resolver: Box<dyn ContentResolver<Error = BoxError, ContentType = BoxContentType> + Send>,
     timer: Box<dyn TaskRunTimer + Send>,
     id: BoxContextID,
+    task_id:usize,
 }
 
 impl BoxTask {
-    pub fn new<F, ID, R, T>(fetcher: F, id: ID, resolver: R, timer: T) -> Self
+    pub fn new<F, ID, R, T>(fetcher: F, id: ID, resolver: R, timer: T,task_id:usize) -> Self
     where
         F: ContentFetcher<Error = BoxError, ContentType = BoxContentType, ID = BoxContextID>
             + Send
@@ -62,7 +63,11 @@ impl BoxTask {
             resolver: Box::new(resolver),
             timer: Box::new(timer),
             id: BoxContextID::new(id),
+            task_id,
         }
+    }
+    pub fn id_changed(&self) -> bool {
+        self.id.changed()
     }
     pub async fn run_once(&mut self) -> Option<Result<(), BoxError>> {
         if !self.id.has_next() {
@@ -70,6 +75,11 @@ impl BoxTask {
         }
         let fu = self.fetcher.fetch_content(&self.id);
         let result = fu.await;
+        {
+            let begin = std::time::Instant::now();
+            self.id.next_id().await;
+            log::info!("task {} next_id expand {:?}",self.task_id,std::time::Instant::now() - begin);
+        }
         match result {
             Ok(result) => {
                 let resolve_content = self.resolver.resolve_content(result).await;

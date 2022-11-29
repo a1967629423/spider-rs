@@ -1,6 +1,10 @@
-use spider_engine::core::{
-    content_fetcher::{BoxContentType, BoxContextID, BoxError, ContentFetcher},
-    content_resolver::ContentType,
+pub mod pica;
+use spider_engine::{
+    core::{
+        content_fetcher::{BoxContentType, BoxContextID, ContentFetcher},
+        content_resolver::ContentType,
+    },
+    BoxError,
 };
 
 #[derive(Debug, Clone)]
